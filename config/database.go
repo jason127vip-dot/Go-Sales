@@ -13,7 +13,11 @@ func InitDB(databaseURL string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
 
-	return gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
+	dialector := postgres.New(postgres.Config{
+		DSN:                  databaseURL,
+		PreferSimpleProtocol: true,
+	})
+	return gorm.Open(dialector, &gorm.Config{})
 }
 
 func AutoMigrate(db *gorm.DB) error {

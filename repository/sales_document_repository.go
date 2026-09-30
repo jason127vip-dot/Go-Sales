@@ -1,0 +1,461 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/jason127vip-dot/Go-Sales/dto"
+	"github.com/jason127vip-dot/Go-Sales/model"
+	"gorm.io/gorm"
+)
+
+var ErrInsufficientQuantity = errors.New("outbound quantity exceeds the remaining order quantity")
+var ErrInsufficientBalance = errors.New("payment amount exceeds the unpaid amount")
+
+type SalesDocumentRepository struct{ db *gorm.DB }
+
+type OutboundLineAvailability struct {
+	ID                uint    `json:"id"`
+	SalesOrderLineID  uint    `json:"salesOrderLineId"`
+	ProductCode       string  `json:"productCode"`
+	ProductName       string  `json:"productName"`
+	Unit              string  `json:"unit"`
+	OrderedQuantity   float64 `json:"orderedQuantity"`
+	RemainingQuantity float64 `json:"remainingQuantity"`
+	OutboundQuantity  float64 `json:"outboundQuantity"`
+}
+
+type PaymentOrderSummary struct {
+	ID           uint    `json:"id"`
+	OrderNo      string  `json:"orderNo"`
+	CustomerName string  `json:"customerName"`
+	OrderAmount  float64 `json:"orderAmount"`
+	PaidAmount   float64 `json:"paidAmount"`
+	UnpaidAmount float64 `json:"unpaidAmount"`
+}
+
+type SalesOrderExecution struct {
+	Outbounds []model.SalesOutbound `json:"outbounds"`
+	Payments  []model.Payment       `json:"payments"`
+}
+
+type SalesOrderPaymentReportRow struct {
+	ID              uint    `json:"id"`
+	OrderNo         string  `json:"orderNo"`
+	CustomerName    string  `json:"customerName"`
+	OrderDate       string  `json:"orderDate"`
+	OrderAmount     float64 `json:"orderAmount"`
+	PaidAmount      float64 `json:"paidAmount"`
+	UnpaidAmount    float64 `json:"unpaidAmount"`
+	LastPaymentDate *string `json:"lastPaymentDate"`
+	PaymentStatus   string  `json:"paymentStatus"`
+}
+type DashboardActivity struct {
+	ID        uint   `json:"id"`
+	Actor     string `json:"actor"`
+	Summary   string `json:"summary"`
+	Timestamp string `json:"timestamp"`
+}
+type OutstandingCustomer struct {
+	Name   string  `json:"name"`
+	Amount float64 `json:"amount"`
+}
+type DashboardStats struct {
+	TotalSales           float64               `json:"totalSales"`
+	ReceivedAmount       float64               `json:"receivedAmount"`
+	UnpaidAmount         float64               `json:"unpaidAmount"`
+	OutboundQuantity     float64               `json:"outboundQuantity"`
+	RecentActivities     []DashboardActivity   `json:"recentActivities"`
+	OutstandingCustomers []OutstandingCustomer `json:"outstandingCustomers"`
+}
+
+func NewSalesDocumentRepository(db *gorm.DB) *SalesDocumentRepository {
+	return &SalesDocumentRepository{db: db}
+}
+
+func (r *SalesDocumentRepository) CreateOutbound(ctx context.Context, req dto.CreateSalesOutboundRequest) (*model.SalesOutbound, error) {
+	date, err := time.Parse("2006-01-02", req.OutboundDate)
+	if err != nil {
+		return nil, err
+	}
+	var result model.SalesOutbound
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var order model.SalesOrder
+		if err := tx.Preload("Lines").First(&order, req.SalesOrderID).Error; err != nil {
+			return err
+		}
+		if order.Status != "confirmed" {
+			return ErrOnlyConfirmedOrders
+		}
+		lines := make([]model.SalesOutboundLine, 0, len(req.Lines))
+		for _, reqLine := range req.Lines {
+			var orderLine model.SalesOrderLine
+			if err := tx.Where("id = ? AND sales_order_id = ?", reqLine.SalesOrderLineID, order.ID).First(&orderLine).Error; err != nil {
+				return err
+			}
+			var sent float64
+			tx.Model(&model.SalesOutboundLine{}).Joins("JOIN sales_outbounds ON sales_outbounds.id = sales_outbound_lines.sales_outbound_id").Where("sales_outbound_lines.sales_order_line_id = ? AND sales_outbounds.status = ?", orderLine.ID, "confirmed").Select("COALESCE(SUM(sales_outbound_lines.outbound_quantity), 0)").Scan(&sent)
+			if reqLine.OutboundQuantity > orderLine.Quantity-sent {
+				return ErrInsufficientQuantity
+			}
+			lines = append(lines, model.SalesOutboundLine{SalesOrderLineID: orderLine.ID, OutboundQuantity: reqLine.OutboundQuantity})
+		}
+		var count int64
+		year := time.Now().Year()
+		tx.Model(&model.SalesOutbound{}).Where("outbound_no LIKE ?", fmt.Sprintf("OUT-%d-%%", year)).Count(&count)
+		result = model.SalesOutbound{OutboundNo: fmt.Sprintf("OUT-%d-%04d", year, count+1), SalesOrderID: order.ID, OutboundDate: date, Status: "draft", Lines: lines}
+		return tx.Create(&result).Error
+	})
+	return &result, err
+}
+
+func (r *SalesDocumentRepository) CreatePayment(ctx context.Context, req dto.CreatePaymentRequest) (*model.Payment, error) {
+	date, err := time.Parse("2006-01-02", req.PaymentDate)
+	if err != nil {
+		return nil, err
+	}
+	var result model.Payment
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var order model.SalesOrder
+		if err := tx.First(&order, req.SalesOrderID).Error; err != nil {
+			return err
+		}
+		if order.Status != "confirmed" {
+			return ErrOnlyConfirmedOrders
+		}
+		var paid float64
+		tx.Model(&model.Payment{}).Where("sales_order_id = ? AND status = ?", order.ID, "confirmed").Select("COALESCE(SUM(amount), 0)").Scan(&paid)
+		if req.Amount > order.TotalAmount-paid {
+			return ErrInsufficientBalance
+		}
+		var count int64
+		year := time.Now().Year()
+		tx.Model(&model.Payment{}).Where("payment_no LIKE ?", fmt.Sprintf("PAY-%d-%%", year)).Count(&count)
+		result = model.Payment{PaymentNo: fmt.Sprintf("PAY-%d-%04d", year, count+1), SalesOrderID: order.ID, PaymentDate: date, Amount: req.Amount, Method: req.Method, ReferenceNo: req.ReferenceNo, Status: "draft"}
+		return tx.Create(&result).Error
+	})
+	return &result, err
+}
+
+func (r *SalesDocumentRepository) FindOutbounds(ctx context.Context) ([]model.SalesOutbound, error) {
+	var rows []model.SalesOutbound
+	err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").Order("id desc").Find(&rows).Error
+	return rows, err
+}
+
+func (r *SalesDocumentRepository) AvailableOrders(ctx context.Context) ([]model.SalesOrder, error) {
+	var orders []model.SalesOrder
+	if err := r.db.WithContext(ctx).Preload("Customer").Preload("Lines").Where("status = ?", "confirmed").Order("id desc").Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	result := make([]model.SalesOrder, 0)
+	for _, order := range orders {
+		lines, err := r.OutboundLines(ctx, order.ID)
+		if err != nil {
+			return nil, err
+		}
+		if len(lines) > 0 {
+			result = append(result, order)
+		}
+	}
+	return result, nil
+}
+
+func (r *SalesDocumentRepository) OutboundLines(ctx context.Context, orderID uint) ([]OutboundLineAvailability, error) {
+	var order model.SalesOrder
+	if err := r.db.WithContext(ctx).Preload("Lines").Where("id = ? AND status = ?", orderID, "confirmed").First(&order).Error; err != nil {
+		return nil, err
+	}
+	result := make([]OutboundLineAvailability, 0)
+	for _, line := range order.Lines {
+		var sent float64
+		err := r.db.WithContext(ctx).Table("sales_outbound_lines").Joins("JOIN sales_outbounds ON sales_outbounds.id = sales_outbound_lines.sales_outbound_id").Where("sales_outbound_lines.sales_order_line_id = ? AND sales_outbounds.status = ?", line.ID, "confirmed").Select("COALESCE(SUM(sales_outbound_lines.outbound_quantity), 0)").Scan(&sent).Error
+		if err != nil {
+			return nil, err
+		}
+		remaining := line.Quantity - sent
+		if remaining > 0 {
+			result = append(result, OutboundLineAvailability{line.ID, line.ID, line.ProductCode, line.ProductName, line.Unit, line.Quantity, remaining, remaining})
+		}
+	}
+	return result, nil
+}
+
+func (r *SalesDocumentRepository) SetOutboundStatus(ctx context.Context, id uint, from, to string) (*model.SalesOutbound, error) {
+	var row model.SalesOutbound
+	if err := r.db.WithContext(ctx).Preload("Lines").First(&row, id).Error; err != nil {
+		return nil, err
+	}
+	if row.Status != from {
+		return nil, ErrOnlyDraftOrders
+	}
+	if to == "confirmed" {
+		available, err := r.OutboundLines(ctx, row.SalesOrderID)
+		if err != nil {
+			return nil, err
+		}
+		for _, saved := range row.Lines {
+			valid := false
+			for _, item := range available {
+				if item.SalesOrderLineID == saved.SalesOrderLineID && saved.OutboundQuantity <= item.RemainingQuantity {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return nil, ErrInsufficientQuantity
+			}
+		}
+	}
+	row.Status = to
+	if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
+		return nil, err
+	}
+	return r.FindOutbound(ctx, id)
+}
+
+func (r *SalesDocumentRepository) FindOutbound(ctx context.Context, id uint) (*model.SalesOutbound, error) {
+	var row model.SalesOutbound
+	err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").First(&row, id).Error
+	return &row, err
+}
+
+func (r *SalesDocumentRepository) UpdateOutbound(ctx context.Context, id uint, req dto.CreateSalesOutboundRequest) (*model.SalesOutbound, error) {
+	date, err := time.Parse("2006-01-02", req.OutboundDate)
+	if err != nil {
+		return nil, err
+	}
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row model.SalesOutbound
+		if err := tx.First(&row, id).Error; err != nil {
+			return err
+		}
+		if row.Status != "draft" || row.SalesOrderID != req.SalesOrderID {
+			return ErrOnlyDraftOrders
+		}
+		available, err := r.OutboundLines(ctx, row.SalesOrderID)
+		if err != nil {
+			return err
+		}
+		lines := make([]model.SalesOutboundLine, 0, len(req.Lines))
+		for _, input := range req.Lines {
+			found := false
+			for _, item := range available {
+				if item.SalesOrderLineID == input.SalesOrderLineID {
+					found = true
+					if input.OutboundQuantity > item.RemainingQuantity {
+						return ErrInsufficientQuantity
+					}
+					lines = append(lines, model.SalesOutboundLine{SalesOutboundID: id, SalesOrderLineID: input.SalesOrderLineID, OutboundQuantity: input.OutboundQuantity})
+					break
+				}
+			}
+			if !found {
+				return ErrInsufficientQuantity
+			}
+		}
+		if err := tx.Where("sales_outbound_id = ?", id).Delete(&model.SalesOutboundLine{}).Error; err != nil {
+			return err
+		}
+		row.OutboundDate = date
+		if err := tx.Save(&row).Error; err != nil {
+			return err
+		}
+		return tx.Create(&lines).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.FindOutbound(ctx, id)
+}
+
+func (r *SalesDocumentRepository) DeleteOutbound(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row model.SalesOutbound
+		if err := tx.First(&row, id).Error; err != nil {
+			return err
+		}
+		if row.Status != "draft" {
+			return ErrOnlyDraftOrders
+		}
+		if err := tx.Where("sales_outbound_id = ?", id).Delete(&model.SalesOutboundLine{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&row).Error
+	})
+}
+
+func (r *SalesDocumentRepository) FindPayments(ctx context.Context) ([]model.Payment, error) {
+	var rows []model.Payment
+	err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Order("id desc").Find(&rows).Error
+	return rows, err
+}
+
+func (r *SalesDocumentRepository) PaymentSummaries(ctx context.Context) ([]PaymentOrderSummary, error) {
+	var orders []model.SalesOrder
+	if err := r.db.WithContext(ctx).Preload("Customer").Where("status = ?", "confirmed").Order("id desc").Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	result := make([]PaymentOrderSummary, 0)
+	for _, order := range orders {
+		var paid float64
+		if err := r.db.WithContext(ctx).Model(&model.Payment{}).Where("sales_order_id = ? AND status = ?", order.ID, "confirmed").Select("COALESCE(SUM(amount), 0)").Scan(&paid).Error; err != nil {
+			return nil, err
+		}
+		if unpaid := order.TotalAmount - paid; unpaid > 0 {
+			result = append(result, PaymentOrderSummary{order.ID, order.OrderNo, order.Customer.Name, order.TotalAmount, paid, unpaid})
+		}
+	}
+	return result, nil
+}
+
+func (r *SalesDocumentRepository) SetPaymentStatus(ctx context.Context, id uint, from, to string) (*model.Payment, error) {
+	var row model.Payment
+	if err := r.db.WithContext(ctx).First(&row, id).Error; err != nil {
+		return nil, err
+	}
+	if row.Status != from {
+		return nil, ErrOnlyDraftOrders
+	}
+	if to == "confirmed" {
+		var order model.SalesOrder
+		if err := r.db.WithContext(ctx).First(&order, row.SalesOrderID).Error; err != nil {
+			return nil, err
+		}
+		var paid float64
+		if err := r.db.WithContext(ctx).Model(&model.Payment{}).Where("sales_order_id = ? AND status = ?", order.ID, "confirmed").Select("COALESCE(SUM(amount), 0)").Scan(&paid).Error; err != nil {
+			return nil, err
+		}
+		if row.Amount > order.TotalAmount-paid {
+			return nil, ErrInsufficientBalance
+		}
+	}
+	row.Status = to
+	if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
+		return nil, err
+	}
+	return r.FindPayment(ctx, id)
+}
+
+func (r *SalesDocumentRepository) FindPayment(ctx context.Context, id uint) (*model.Payment, error) {
+	var row model.Payment
+	err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").First(&row, id).Error
+	return &row, err
+}
+
+func (r *SalesDocumentRepository) UpdatePayment(ctx context.Context, id uint, req dto.CreatePaymentRequest) (*model.Payment, error) {
+	date, err := time.Parse("2006-01-02", req.PaymentDate)
+	if err != nil {
+		return nil, err
+	}
+	var row model.Payment
+	if err := r.db.WithContext(ctx).First(&row, id).Error; err != nil {
+		return nil, err
+	}
+	if row.Status != "draft" || row.SalesOrderID != req.SalesOrderID {
+		return nil, ErrOnlyDraftOrders
+	}
+	var order model.SalesOrder
+	if err := r.db.WithContext(ctx).First(&order, row.SalesOrderID).Error; err != nil {
+		return nil, err
+	}
+	var paid float64
+	if err := r.db.WithContext(ctx).Model(&model.Payment{}).Where("sales_order_id = ? AND status = ?", order.ID, "confirmed").Select("COALESCE(SUM(amount), 0)").Scan(&paid).Error; err != nil {
+		return nil, err
+	}
+	if req.Amount > order.TotalAmount-paid {
+		return nil, ErrInsufficientBalance
+	}
+	row.PaymentDate, row.Amount, row.Method, row.ReferenceNo = date, req.Amount, req.Method, req.ReferenceNo
+	if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
+		return nil, err
+	}
+	return r.FindPayment(ctx, id)
+}
+func (r *SalesDocumentRepository) DeletePayment(ctx context.Context, id uint) error {
+	var row model.Payment
+	if err := r.db.WithContext(ctx).First(&row, id).Error; err != nil {
+		return err
+	}
+	if row.Status != "draft" {
+		return ErrOnlyDraftOrders
+	}
+	return r.db.WithContext(ctx).Delete(&row).Error
+}
+func (r *SalesDocumentRepository) Execution(ctx context.Context, orderID uint) (*SalesOrderExecution, error) {
+	var outbounds []model.SalesOutbound
+	if err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").Where("sales_order_id = ?", orderID).Order("id desc").Find(&outbounds).Error; err != nil {
+		return nil, err
+	}
+	var payments []model.Payment
+	if err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Where("sales_order_id = ?", orderID).Order("id desc").Find(&payments).Error; err != nil {
+		return nil, err
+	}
+	return &SalesOrderExecution{outbounds, payments}, nil
+}
+
+func (r *SalesDocumentRepository) PaymentReport(ctx context.Context) ([]SalesOrderPaymentReportRow, error) {
+	var orders []model.SalesOrder
+	if err := r.db.WithContext(ctx).Preload("Customer").Where("status = ?", "confirmed").Order("order_date desc, id desc").Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	rows := make([]SalesOrderPaymentReportRow, 0, len(orders))
+	for _, order := range orders {
+		var payments []model.Payment
+		if err := r.db.WithContext(ctx).Where("sales_order_id = ? AND status = ?", order.ID, "confirmed").Order("payment_date desc, id desc").Find(&payments).Error; err != nil {
+			return nil, err
+		}
+		paid := 0.0
+		for _, payment := range payments {
+			paid += payment.Amount
+		}
+		unpaid := order.TotalAmount - paid
+		status := "partially_paid"
+		if paid == 0 {
+			status = "unpaid"
+		} else if unpaid <= 0 {
+			unpaid = 0
+			status = "paid"
+		}
+		var last *string
+		if len(payments) > 0 {
+			value := payments[0].PaymentDate.Format("2006-01-02")
+			last = &value
+		}
+		rows = append(rows, SalesOrderPaymentReportRow{order.ID, order.OrderNo, order.Customer.Name, order.OrderDate.Format("2006-01-02"), order.TotalAmount, paid, unpaid, last, status})
+	}
+	return rows, nil
+}
+
+func (r *SalesDocumentRepository) Dashboard(ctx context.Context) (*DashboardStats, error) {
+	report, err := r.PaymentReport(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stats := &DashboardStats{RecentActivities: make([]DashboardActivity, 0), OutstandingCustomers: make([]OutstandingCustomer, 0)}
+	balances := map[string]float64{}
+	for _, row := range report {
+		stats.TotalSales += row.OrderAmount
+		stats.ReceivedAmount += row.PaidAmount
+		stats.UnpaidAmount += row.UnpaidAmount
+		if row.UnpaidAmount > 0 {
+			balances[row.CustomerName] += row.UnpaidAmount
+		}
+	}
+	if err := r.db.WithContext(ctx).Table("sales_outbound_lines").Joins("JOIN sales_outbounds ON sales_outbounds.id = sales_outbound_lines.sales_outbound_id").Where("sales_outbounds.status = ?", "confirmed").Select("COALESCE(SUM(sales_outbound_lines.outbound_quantity), 0)").Scan(&stats.OutboundQuantity).Error; err != nil {
+		return nil, err
+	}
+	var recent []model.SalesOrder
+	if err := r.db.WithContext(ctx).Preload("Customer").Order("created_at desc").Limit(5).Find(&recent).Error; err != nil {
+		return nil, err
+	}
+	for _, order := range recent {
+		stats.RecentActivities = append(stats.RecentActivities, DashboardActivity{order.ID, order.Customer.Name, fmt.Sprintf("%s · ¥%.2f · %s", order.OrderNo, order.TotalAmount, order.Status), order.CreatedAt.Format(time.RFC3339)})
+	}
+	for name, amount := range balances {
+		stats.OutstandingCustomers = append(stats.OutstandingCustomers, OutstandingCustomer{name, amount})
+	}
+	return stats, nil
+}

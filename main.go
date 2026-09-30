@@ -29,12 +29,18 @@ func main() {
 	customerService := service.NewCustomerService(customerRepository)
 	productRepository := repository.NewProductRepository(db)
 	productService := service.NewProductService(productRepository)
+	salesOrderRepository := repository.NewSalesOrderRepository(db)
+	salesOrderService := service.NewSalesOrderService(salesOrderRepository)
+	documentRepository := repository.NewSalesDocumentRepository(db)
+	documentService := service.NewSalesDocumentService(documentRepository)
 
 	router.RegisterRoutes(
 		r,
 		handler.NewHealthHandler(),
 		handler.NewCustomerHandler(customerService),
 		handler.NewProductHandler(productService),
+		handler.NewSalesOrderHandler(salesOrderService),
+		handler.NewSalesDocumentHandler(documentService),
 	)
 
 	if err := r.Run(":" + cfg.ServerPort); err != nil {

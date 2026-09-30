@@ -1,0 +1,67 @@
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /health                   --> github.com/jason127vip-dot/Go-Sales/handler.(*HealthHandler).Check-fm (4 handlers)
+[GIN-debug] GET    /api/dashboard            --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).Dashboard-fm (4 handlers)
+[GIN-debug] GET    /api/reports/sales-order-payments --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).PaymentReport-fm (4 handlers)
+[GIN-debug] GET    /api/customers            --> github.com/jason127vip-dot/Go-Sales/handler.(*CustomerHandler).FindAll-fm (4 handlers)
+[GIN-debug] POST   /api/customers            --> github.com/jason127vip-dot/Go-Sales/handler.(*CustomerHandler).Create-fm (4 handlers)
+[GIN-debug] PUT    /api/customers/:id        --> github.com/jason127vip-dot/Go-Sales/handler.(*CustomerHandler).Update-fm (4 handlers)
+[GIN-debug] DELETE /api/customers/:id        --> github.com/jason127vip-dot/Go-Sales/handler.(*CustomerHandler).Delete-fm (4 handlers)
+[GIN-debug] GET    /api/products             --> github.com/jason127vip-dot/Go-Sales/handler.(*ProductHandler).FindAll-fm (4 handlers)
+[GIN-debug] POST   /api/products             --> github.com/jason127vip-dot/Go-Sales/handler.(*ProductHandler).Create-fm (4 handlers)
+[GIN-debug] PUT    /api/products/:id         --> github.com/jason127vip-dot/Go-Sales/handler.(*ProductHandler).Update-fm (4 handlers)
+[GIN-debug] DELETE /api/products/:id         --> github.com/jason127vip-dot/Go-Sales/handler.(*ProductHandler).Delete-fm (4 handlers)
+[GIN-debug] GET    /api/sales-orders         --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesOrderHandler).FindAll-fm (4 handlers)
+[GIN-debug] POST   /api/sales-orders         --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesOrderHandler).Create-fm (4 handlers)
+[GIN-debug] PUT    /api/sales-orders/:id     --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesOrderHandler).Update-fm (4 handlers)
+[GIN-debug] POST   /api/sales-orders/:id/confirm --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesOrderHandler).Confirm-fm (4 handlers)
+[GIN-debug] POST   /api/sales-orders/:id/cancel-confirmation --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesOrderHandler).CancelConfirmation-fm (4 handlers)
+[GIN-debug] DELETE /api/sales-orders/:id     --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesOrderHandler).Delete-fm (4 handlers)
+[GIN-debug] GET    /api/sales-orders/:id/execution --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).Execution-fm (4 handlers)
+[GIN-debug] GET    /api/sales-outbounds      --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).FindOutbounds-fm (4 handlers)
+[GIN-debug] GET    /api/sales-outbounds/available-orders --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).AvailableOrders-fm (4 handlers)
+[GIN-debug] GET    /api/sales-outbounds/order/:id/lines --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).OutboundLines-fm (4 handlers)
+[GIN-debug] POST   /api/sales-outbounds      --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).CreateOutbound-fm (4 handlers)
+[GIN-debug] PUT    /api/sales-outbounds/:id  --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).UpdateOutbound-fm (4 handlers)
+[GIN-debug] POST   /api/sales-outbounds/:id/confirm --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).ConfirmOutbound-fm (4 handlers)
+[GIN-debug] POST   /api/sales-outbounds/:id/cancel-confirmation --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).CancelOutbound-fm (4 handlers)
+[GIN-debug] DELETE /api/sales-outbounds/:id  --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).DeleteOutbound-fm (4 handlers)
+[GIN-debug] GET    /api/payments             --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).FindPayments-fm (4 handlers)
+[GIN-debug] GET    /api/payments/order-summaries --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).PaymentSummaries-fm (4 handlers)
+[GIN-debug] POST   /api/payments             --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).CreatePayment-fm (4 handlers)
+[GIN-debug] PUT    /api/payments/:id         --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).UpdatePayment-fm (4 handlers)
+[GIN-debug] POST   /api/payments/:id/confirm --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).ConfirmPayment-fm (4 handlers)
+[GIN-debug] POST   /api/payments/:id/cancel-confirmation --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).CancelPayment-fm (4 handlers)
+[GIN-debug] DELETE /api/payments/:id         --> github.com/jason127vip-dot/Go-Sales/handler.(*SalesDocumentHandler).DeletePayment-fm (4 handlers)
+[GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
+Please check https://github.com/gin-gonic/gin/blob/master/docs/doc.md#dont-trust-all-proxies for details.
+[GIN-debug] Listening and serving HTTP on :8080
+[GIN] 2026/09/30 - 14:12:18 | 200 | 253.71ms |             ::1 | GET      "/api/sales-orders"
+[GIN] 2026/09/30 - 14:12:32 | 204 |       0s |             ::1 | OPTIONS  "/api/sales-orders"
+[GIN] 2026/09/30 - 14:12:32 | 204 |       0s |             ::1 | OPTIONS  "/api/sales-orders"
+[GIN] 2026/09/30 - 14:12:33 | 200 | 295.46ms |             ::1 | GET      "/api/sales-orders"
+[GIN] 2026/09/30 - 14:12:33 | 200 | 252.74ms |             ::1 | GET      "/api/sales-orders"
+[GIN] 2026/09/30 - 14:14:18 | 204 |       0s |             ::1 | OPTIONS  "/api/dashboard"
+[GIN] 2026/09/30 - 14:14:18 | 204 |       0s |             ::1 | OPTIONS  "/api/dashboard"
+[GIN] 2026/09/30 - 14:14:18 | 200 | 306.69ms |             ::1 | GET      "/api/dashboard"
+[GIN] 2026/09/30 - 14:14:18 | 200 | 270.75ms |             ::1 | GET      "/api/dashboard"
+[GIN] 2026/09/30 - 14:14:23 | 200 | 285.97ms |             ::1 | GET      "/api/dashboard"
+[GIN] 2026/09/30 - 14:14:23 | 200 | 250.77ms |             ::1 | GET      "/api/dashboard"
+[GIN] 2026/09/30 - 14:14:32 | 204 |       0s |             ::1 | OPTIONS  "/api/sales-orders"
+[GIN] 2026/09/30 - 14:14:32 | 204 |       0s |             ::1 | OPTIONS  "/api/sales-orders"
+
+2026/09/30 14:14:32 [32mC:/Work/Workspace/Gosales/repository/sales_order_repository.go:37 [33mSLOW SQL >= 200ms
+[0m[31;1m[208.499ms] [33m[rows:2][35m SELECT * FROM "sales_orders" ORDER BY id desc[0m
+[GIN] 2026/09/30 - 14:14:32 | 200 |  351.8ms |             ::1 | GET      "/api/sales-orders"
+[GIN] 2026/09/30 - 14:14:32 | 200 | 273.75ms |             ::1 | GET      "/api/sales-orders"
+[GIN] 2026/09/30 - 14:14:51 | 204 |       0s |             ::1 | OPTIONS  "/api/customers"
+[GIN] 2026/09/30 - 14:14:51 | 204 |       0s |             ::1 | OPTIONS  "/api/products"
+[GIN] 2026/09/30 - 14:14:51 | 200 | 107.66ms |             ::1 | GET      "/api/customers"
+
+2026/09/30 14:14:52 [32mC:/Work/Workspace/Gosales/repository/product_repository.go:27 [33mSLOW SQL >= 200ms
+[0m[31;1m[419.104ms] [33m[rows:3][35m SELECT * FROM "products" ORDER BY id desc[0m
+[GIN] 2026/09/30 - 14:14:52 | 200 | 420.28ms |             ::1 | GET      "/api/products"
