@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/jason127vip-dot/Go-Sales/dto"
@@ -52,23 +53,30 @@ type SalesOrderPaymentReportRow struct {
 	LastPaymentDate *string `json:"lastPaymentDate"`
 	PaymentStatus   string  `json:"paymentStatus"`
 }
-type DashboardActivity struct {
-	ID        uint   `json:"id"`
-	Actor     string `json:"actor"`
-	Summary   string `json:"summary"`
-	Timestamp string `json:"timestamp"`
+type DashboardSalesOrder struct {
+	ID           uint    `json:"id"`
+	OrderNo      string  `json:"orderNo"`
+	CustomerName string  `json:"customerName"`
+	OrderDate    string  `json:"orderDate"`
+	Amount       float64 `json:"amount"`
+	Status       string  `json:"status"`
 }
 type OutstandingCustomer struct {
 	Name   string  `json:"name"`
 	Amount float64 `json:"amount"`
+}
+type DailyOrderVolume struct {
+	Date  string `json:"date"`
+	Count int64  `json:"count"`
 }
 type DashboardStats struct {
 	TotalSales           float64               `json:"totalSales"`
 	ReceivedAmount       float64               `json:"receivedAmount"`
 	UnpaidAmount         float64               `json:"unpaidAmount"`
 	OutboundQuantity     float64               `json:"outboundQuantity"`
-	RecentActivities     []DashboardActivity   `json:"recentActivities"`
+	RecentSalesOrders    []DashboardSalesOrder `json:"recentSalesOrders"`
 	OutstandingCustomers []OutstandingCustomer `json:"outstandingCustomers"`
+	DailyOrderVolume     []DailyOrderVolume    `json:"dailyOrderVolume"`
 }
 
 func NewSalesDocumentRepository(db *gorm.DB) *SalesDocumentRepository {
@@ -434,7 +442,11 @@ func (r *SalesDocumentRepository) Dashboard(ctx context.Context) (*DashboardStat
 	if err != nil {
 		return nil, err
 	}
-	stats := &DashboardStats{RecentActivities: make([]DashboardActivity, 0), OutstandingCustomers: make([]OutstandingCustomer, 0)}
+	stats := &DashboardStats{
+		RecentSalesOrders:    make([]DashboardSalesOrder, 0),
+		OutstandingCustomers: make([]OutstandingCustomer, 0),
+		DailyOrderVolume:     make([]DailyOrderVolume, 0, 14),
+	}
 	balances := map[string]float64{}
 	for _, row := range report {
 		stats.TotalSales += row.OrderAmount
@@ -452,10 +464,44 @@ func (r *SalesDocumentRepository) Dashboard(ctx context.Context) (*DashboardStat
 		return nil, err
 	}
 	for _, order := range recent {
-		stats.RecentActivities = append(stats.RecentActivities, DashboardActivity{order.ID, order.Customer.Name, fmt.Sprintf("%s · ¥%.2f · %s", order.OrderNo, order.TotalAmount, order.Status), order.CreatedAt.Format(time.RFC3339)})
+		stats.RecentSalesOrders = append(stats.RecentSalesOrders, DashboardSalesOrder{
+			ID:           order.ID,
+			OrderNo:      order.OrderNo,
+			CustomerName: order.Customer.Name,
+			OrderDate:    order.OrderDate.Format("2006-01-02"),
+			Amount:       order.TotalAmount,
+			Status:       order.Status,
+		})
 	}
 	for name, amount := range balances {
 		stats.OutstandingCustomers = append(stats.OutstandingCustomers, OutstandingCustomer{name, amount})
+	}
+	sort.Slice(stats.OutstandingCustomers, func(i, j int) bool {
+		return stats.OutstandingCustomers[i].Amount > stats.OutstandingCustomers[j].Amount
+	})
+
+	today := time.Now()
+	startDate := today.AddDate(0, 0, -13)
+	type dailyOrderCount struct {
+		Date  string
+		Count int64
+	}
+	var dailyCounts []dailyOrderCount
+	if err := r.db.WithContext(ctx).Model(&model.SalesOrder{}).
+		Select("TO_CHAR(order_date, 'YYYY-MM-DD') AS date, COUNT(*) AS count").
+		Where("order_date BETWEEN ? AND ?", startDate.Format("2006-01-02"), today.Format("2006-01-02")).
+		Group("order_date").
+		Order("order_date").
+		Scan(&dailyCounts).Error; err != nil {
+		return nil, err
+	}
+	countsByDate := make(map[string]int64, len(dailyCounts))
+	for _, item := range dailyCounts {
+		countsByDate[item.Date] = item.Count
+	}
+	for day := 0; day < 14; day++ {
+		date := startDate.AddDate(0, 0, day).Format("2006-01-02")
+		stats.DailyOrderVolume = append(stats.DailyOrderVolume, DailyOrderVolume{Date: date, Count: countsByDate[date]})
 	}
 	return stats, nil
 }
