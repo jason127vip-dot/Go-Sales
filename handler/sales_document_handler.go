@@ -210,7 +210,7 @@ func (h *SalesDocumentHandler) Dashboard(c *gin.Context) {
 	response.Success(c, row)
 }
 func handleDocumentError(c *gin.Context, e error) {
-	if errors.Is(e, repository.ErrInsufficientBalance) || errors.Is(e, repository.ErrInsufficientQuantity) || errors.Is(e, repository.ErrOnlyDraftOrders) || errors.Is(e, repository.ErrOnlyConfirmedOrders) {
+	if errors.Is(e, repository.ErrDocumentState) || errors.Is(e, repository.ErrAlreadyInvoiced) || errors.Is(e, repository.ErrDocumentInUse) || errors.Is(e, repository.ErrLegacyPayment) || errors.Is(e, repository.ErrInvoiceRequired) || errors.Is(e, repository.ErrInsufficientBalance) || errors.Is(e, repository.ErrInsufficientQuantity) || errors.Is(e, repository.ErrOnlyDraftOrders) || errors.Is(e, repository.ErrOnlyConfirmedOrders) {
 		response.Error(c, 400, e.Error())
 		return
 	}

@@ -112,15 +112,26 @@ func (r *SalesOrderRepositoryImpl) Confirm(ctx context.Context, id uint) (*model
 }
 
 func (r *SalesOrderRepositoryImpl) CancelConfirmation(ctx context.Context, id uint) (*model.SalesOrder, error) {
-	var order model.SalesOrder
-	if err := r.db.WithContext(ctx).First(&order, id).Error; err != nil {
-		return nil, err
-	}
-	if order.Status != "confirmed" {
-		return nil, ErrOnlyConfirmedOrders
-	}
-	order.Status = "draft"
-	if err := r.db.WithContext(ctx).Save(&order).Error; err != nil {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		order, err := lockSalesOrder(tx, id)
+		if err != nil {
+			return err
+		}
+		if order.Status != "confirmed" {
+			return ErrOnlyConfirmedOrders
+		}
+		for _, document := range []any{&model.SalesOutbound{}, &model.SalesInvoice{}, &model.Payment{}} {
+			var count int64
+			if err := tx.Model(document).Where("sales_order_id = ?", id).Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				return ErrDocumentInUse
+			}
+		}
+		return tx.Model(order).Update("status", "draft").Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return r.findByID(ctx, id)

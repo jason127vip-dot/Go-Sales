@@ -12,9 +12,9 @@ type CreateSalesOutboundRequest struct {
 }
 
 type CreatePaymentRequest struct {
-	SalesOrderID uint    `json:"salesOrderId" binding:"required"`
-	PaymentDate  string  `json:"paymentDate" binding:"required,datetime=2006-01-02"`
-	Amount       float64 `json:"amount" binding:"gt=0"`
-	Method       string  `json:"method" binding:"required,max=50"`
-	ReferenceNo  string  `json:"referenceNo" binding:"max=100"`
+	SalesInvoiceID uint    `json:"salesInvoiceId" binding:"required"`
+	PaymentDate    string  `json:"paymentDate" binding:"required,datetime=2006-01-02"`
+	Amount         float64 `json:"amount" binding:"gt=0"`
+	Method         string  `json:"method" binding:"required,max=50"`
+	ReferenceNo    string  `json:"referenceNo" binding:"max=100"`
 }

@@ -28,6 +28,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.SalesOrderLine{},
 		&model.SalesOutbound{},
 		&model.SalesOutboundLine{},
+		&model.SalesInvoice{},
+		&model.SalesInvoiceLine{},
 		&model.Payment{},
 	)
 }

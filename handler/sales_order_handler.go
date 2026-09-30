@@ -96,7 +96,7 @@ func (h *SalesOrderHandler) Delete(c *gin.Context) {
 }
 
 func handleSalesOrderError(c *gin.Context, err error) {
-	if errors.Is(err, repository.ErrOnlyDraftOrders) || errors.Is(err, repository.ErrOnlyConfirmedOrders) {
+	if errors.Is(err, repository.ErrDocumentInUse) || errors.Is(err, repository.ErrOnlyDraftOrders) || errors.Is(err, repository.ErrOnlyConfirmedOrders) {
 		response.Error(c, 400, err.Error())
 		return
 	}

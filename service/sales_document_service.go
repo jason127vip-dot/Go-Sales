@@ -42,7 +42,7 @@ func (s *SalesDocumentService) DeleteOutbound(c context.Context, id uint) error 
 func (s *SalesDocumentService) FindPayments(c context.Context) ([]model.Payment, error) {
 	return s.repository.FindPayments(c)
 }
-func (s *SalesDocumentService) PaymentSummaries(c context.Context) ([]repository.PaymentOrderSummary, error) {
+func (s *SalesDocumentService) PaymentSummaries(c context.Context) ([]repository.PaymentInvoiceSummary, error) {
 	return s.repository.PaymentSummaries(c)
 }
 func (s *SalesDocumentService) CreatePayment(c context.Context, r dto.CreatePaymentRequest) (*model.Payment, error) {
