@@ -6,7 +6,7 @@ func CORSMiddleware() gin.HandlerFunc {
 	allowedOrigins := map[string]bool{
 		"http://localhost:5173":     true,
 		"http://127.0.0.1:5173":     true,
-		"http://192.168.69.51:5173": true,
+		"http://192.168.69.23:5173": true,
 	}
 
 	return func(c *gin.Context) {
@@ -16,10 +16,10 @@ func CORSMiddleware() gin.HandlerFunc {
 			c.Header("Vary", "Origin")
 		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Branch-ID")
 
 		if c.Request.Method == "OPTIONS" {
-			c.Status(204)
+			c.AbortWithStatus(204)
 			return
 		}
 		c.Next()

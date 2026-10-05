@@ -96,7 +96,8 @@ func (h *SalesOrderHandler) Delete(c *gin.Context) {
 }
 
 func handleSalesOrderError(c *gin.Context, err error) {
-	if errors.Is(err, repository.ErrDocumentInUse) || errors.Is(err, repository.ErrOnlyDraftOrders) || errors.Is(err, repository.ErrOnlyConfirmedOrders) {
+	var creditError *repository.CreditLimitExceededError
+	if errors.Is(err, service.ErrInvalidUnitPrice) || errors.Is(err, repository.ErrDocumentInUse) || errors.Is(err, repository.ErrOnlyDraftOrders) || errors.Is(err, repository.ErrOnlyConfirmedOrders) || errors.As(err, &creditError) {
 		response.Error(c, 400, err.Error())
 		return
 	}

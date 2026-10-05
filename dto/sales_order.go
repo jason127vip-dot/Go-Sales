@@ -1,8 +1,9 @@
 package dto
 
 type SalesOrderLineRequest struct {
-	ProductID uint    `json:"productId" binding:"required"`
-	Quantity  float64 `json:"quantity" binding:"gt=0"`
+	ProductID uint     `json:"productId" binding:"required"`
+	UnitPrice *float64 `json:"unitPrice" binding:"omitempty,gte=0"`
+	Quantity  float64  `json:"quantity" binding:"gt=0"`
 }
 
 type CreateSalesOrderRequest struct {

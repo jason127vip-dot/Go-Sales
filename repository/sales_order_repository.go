@@ -3,8 +3,6 @@ package repository
 import (
 	"context"
 	"errors"
-	"fmt"
-	"time"
 
 	"github.com/jason127vip-dot/Go-Sales/model"
 	"gorm.io/gorm"
@@ -29,7 +27,7 @@ func NewSalesOrderRepository(db *gorm.DB) *SalesOrderRepositoryImpl {
 }
 
 func (r *SalesOrderRepositoryImpl) withDetails(ctx context.Context, query *gorm.DB) *gorm.DB {
-	return query.WithContext(ctx).Preload("Customer").Preload("Lines")
+	return query.WithContext(ctx).Scopes(branchScope(ctx, "sales_orders")).Preload("Branch").Preload("Customer").Preload("Lines")
 }
 
 func (r *SalesOrderRepositoryImpl) FindAll(ctx context.Context) ([]model.SalesOrder, error) {
@@ -46,34 +44,49 @@ func (r *SalesOrderRepositoryImpl) FindAll(ctx context.Context) ([]model.SalesOr
 }
 
 func (r *SalesOrderRepositoryImpl) Create(ctx context.Context, order *model.SalesOrder) (*model.SalesOrder, error) {
+	order.BranchID = model.BranchID(ctx)
+	var creditWarning string
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := prepareOrderLines(tx, order); err != nil {
 			return err
 		}
-		var count int64
-		year := time.Now().Year()
-		if err := tx.Model(&model.SalesOrder{}).Where("order_no LIKE ?", fmt.Sprintf("SO-%d-%%", year)).Count(&count).Error; err != nil {
+		var err error
+		creditWarning, err = creditWarningOrError(tx, ctx, order, false)
+		if err != nil {
 			return err
 		}
-		order.OrderNo = fmt.Sprintf("SO-%d-%04d", year, count+1)
+		order.OrderNo, err = nextDocumentNumber(tx, "sales_orders", "order_no", "SO")
+		if err != nil {
+			return err
+		}
 		return tx.Create(order).Error
 	})
 	if err != nil {
 		return nil, err
 	}
-	return r.findByID(ctx, order.ID)
+	result, err := r.findByID(ctx, order.ID)
+	if result != nil {
+		result.CreditWarning = creditWarning
+	}
+	return result, err
 }
 
 func (r *SalesOrderRepositoryImpl) UpdateDraft(ctx context.Context, order *model.SalesOrder) (*model.SalesOrder, error) {
+	var creditWarning string
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing model.SalesOrder
-		if err := tx.First(&existing, order.ID).Error; err != nil {
+		if err := tx.Scopes(branchScope(ctx, "sales_orders")).First(&existing, order.ID).Error; err != nil {
 			return err
 		}
 		if existing.Status != "draft" {
 			return ErrOnlyDraftOrders
 		}
 		if err := prepareOrderLines(tx, order); err != nil {
+			return err
+		}
+		var err error
+		creditWarning, err = creditWarningOrError(tx, ctx, order, false)
+		if err != nil {
 			return err
 		}
 		if err := tx.Where("sales_order_id = ?", order.ID).Delete(&model.SalesOrderLine{}).Error; err != nil {
@@ -93,19 +106,28 @@ func (r *SalesOrderRepositoryImpl) UpdateDraft(ctx context.Context, order *model
 	if err != nil {
 		return nil, err
 	}
-	return r.findByID(ctx, order.ID)
+	result, err := r.findByID(ctx, order.ID)
+	if result != nil {
+		result.CreditWarning = creditWarning
+	}
+	return result, err
 }
 
 func (r *SalesOrderRepositoryImpl) Confirm(ctx context.Context, id uint) (*model.SalesOrder, error) {
-	var order model.SalesOrder
-	if err := r.db.WithContext(ctx).First(&order, id).Error; err != nil {
-		return nil, err
-	}
-	if order.Status != "draft" {
-		return nil, ErrOnlyDraftOrders
-	}
-	order.Status = "confirmed"
-	if err := r.db.WithContext(ctx).Save(&order).Error; err != nil {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		order, err := lockSalesOrder(tx, id)
+		if err != nil {
+			return err
+		}
+		if order.Status != "draft" {
+			return ErrOnlyDraftOrders
+		}
+		if _, err := creditWarningOrError(tx, ctx, order, true); err != nil {
+			return err
+		}
+		return tx.Model(order).Update("status", "confirmed").Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return r.findByID(ctx, id)
@@ -139,7 +161,7 @@ func (r *SalesOrderRepositoryImpl) CancelConfirmation(ctx context.Context, id ui
 
 func (r *SalesOrderRepositoryImpl) DeleteDraft(ctx context.Context, id uint) error {
 	var order model.SalesOrder
-	if err := r.db.WithContext(ctx).First(&order, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_orders")).First(&order, id).Error; err != nil {
 		return err
 	}
 	if order.Status != "draft" {
@@ -213,8 +235,17 @@ func prepareOrderLines(tx *gorm.DB, order *model.SalesOrder) error {
 		line.ProductName = product.Name
 		line.Specification = product.Specification
 		line.Unit = product.Unit
-		line.UnitPrice = product.UnitPrice
-		line.Amount = product.UnitPrice * line.Quantity
+		if !line.PriceProvided {
+			line.UnitPrice = product.UnitPrice
+			var price model.PriceList
+			err := tx.Where("branch_id = ? AND customer_id = ? AND product_id = ? AND start_date <= ? AND end_date >= ?", order.BranchID, order.CustomerID, line.ProductID, order.OrderDate, order.OrderDate).First(&price).Error
+			if err == nil {
+				line.UnitPrice = price.UnitPrice
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+		line.Amount = roundMoney(line.UnitPrice * line.Quantity)
 		order.TotalAmount += line.Amount
 	}
 	return nil

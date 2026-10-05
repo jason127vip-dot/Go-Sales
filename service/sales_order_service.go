@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/jason127vip-dot/Go-Sales/model"
 	"github.com/jason127vip-dot/Go-Sales/repository"
 )
+
+var ErrInvalidUnitPrice = errors.New("unit price must be a non-negative amount with no more than two decimal places")
 
 type SalesOrderService interface {
 	FindAll(context.Context) ([]model.SalesOrder, error)
@@ -70,7 +73,15 @@ func orderFromRequest(req dto.CreateSalesOrderRequest) (*model.SalesOrder, error
 	}
 	lines := make([]model.SalesOrderLine, 0, len(req.Lines))
 	for _, line := range req.Lines {
-		lines = append(lines, model.SalesOrderLine{ProductID: line.ProductID, Quantity: line.Quantity})
+		unitPrice := 0.0
+		provided := line.UnitPrice != nil
+		if provided {
+			unitPrice = *line.UnitPrice
+			if !validPrice(unitPrice) {
+				return nil, ErrInvalidUnitPrice
+			}
+		}
+		lines = append(lines, model.SalesOrderLine{ProductID: line.ProductID, UnitPrice: unitPrice, PriceProvided: provided, Quantity: line.Quantity})
 	}
 	return &model.SalesOrder{CustomerID: req.CustomerID, OrderDate: orderDate, CustomerPONo: req.CustomerPONo, ExpectedOutboundDate: expectedOutboundDate, Salesperson: req.Salesperson, Remarks: req.Remarks, Status: "draft", Lines: lines}, nil
 }

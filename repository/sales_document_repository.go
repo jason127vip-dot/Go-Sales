@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"time"
 
@@ -103,10 +102,11 @@ func (r *SalesDocumentRepository) CreateOutbound(ctx context.Context, req dto.Cr
 			}
 			lines = append(lines, model.SalesOutboundLine{SalesOrderLineID: orderLine.ID, OutboundQuantity: reqLine.OutboundQuantity})
 		}
-		var count int64
-		year := time.Now().Year()
-		tx.Model(&model.SalesOutbound{}).Where("outbound_no LIKE ?", fmt.Sprintf("OUT-%d-%%", year)).Count(&count)
-		result = model.SalesOutbound{OutboundNo: fmt.Sprintf("OUT-%d-%04d", year, count+1), SalesOrderID: order.ID, OutboundDate: date, Status: "draft", Lines: lines}
+		number, err := nextDocumentNumber(tx, "sales_outbounds", "outbound_no", "OUT")
+		if err != nil {
+			return err
+		}
+		result = model.SalesOutbound{OutboundNo: number, SalesOrderID: order.ID, OutboundDate: date, Status: "draft", Lines: lines}
 		return tx.Create(&result).Error
 	})
 	return &result, err
@@ -114,13 +114,13 @@ func (r *SalesDocumentRepository) CreateOutbound(ctx context.Context, req dto.Cr
 
 func (r *SalesDocumentRepository) FindOutbounds(ctx context.Context) ([]model.SalesOutbound, error) {
 	var rows []model.SalesOutbound
-	err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").Order("id desc").Find(&rows).Error
+	err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_outbounds")).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").Order("id desc").Find(&rows).Error
 	return rows, err
 }
 
 func (r *SalesDocumentRepository) AvailableOrders(ctx context.Context) ([]model.SalesOrder, error) {
 	var orders []model.SalesOrder
-	if err := r.db.WithContext(ctx).Preload("Customer").Preload("Lines").Where("status = ?", "confirmed").Order("id desc").Find(&orders).Error; err != nil {
+	if err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_orders")).Preload("Customer").Preload("Lines").Where("status = ?", "confirmed").Order("id desc").Find(&orders).Error; err != nil {
 		return nil, err
 	}
 	result := make([]model.SalesOrder, 0)
@@ -138,7 +138,7 @@ func (r *SalesDocumentRepository) AvailableOrders(ctx context.Context) ([]model.
 
 func (r *SalesDocumentRepository) OutboundLines(ctx context.Context, orderID uint) ([]OutboundLineAvailability, error) {
 	var order model.SalesOrder
-	if err := r.db.WithContext(ctx).Preload("Lines").Where("id = ? AND status = ?", orderID, "confirmed").First(&order).Error; err != nil {
+	if err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_orders")).Preload("Lines").Where("id = ? AND status = ?", orderID, "confirmed").First(&order).Error; err != nil {
 		return nil, err
 	}
 	result := make([]OutboundLineAvailability, 0)
@@ -191,7 +191,7 @@ func (r *SalesDocumentRepository) setOutboundStatus(ctx context.Context, id uint
 
 func (r *SalesDocumentRepository) FindOutbound(ctx context.Context, id uint) (*model.SalesOutbound, error) {
 	var row model.SalesOutbound
-	err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").First(&row, id).Error
+	err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_outbounds")).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").First(&row, id).Error
 	return &row, err
 }
 
@@ -274,27 +274,27 @@ func (r *SalesDocumentRepository) DeleteOutbound(ctx context.Context, id uint) e
 
 func (r *SalesDocumentRepository) FindPayments(ctx context.Context) ([]model.Payment, error) {
 	var rows []model.Payment
-	err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("SalesInvoice").Order("id desc").Find(&rows).Error
+	err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "payments")).Preload("SalesOrder.Customer").Preload("SalesInvoice").Order("id desc").Find(&rows).Error
 	return rows, err
 }
 
 func (r *SalesDocumentRepository) FindPayment(ctx context.Context, id uint) (*model.Payment, error) {
 	var row model.Payment
-	err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("SalesInvoice").First(&row, id).Error
+	err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "payments")).Preload("SalesOrder.Customer").Preload("SalesInvoice").First(&row, id).Error
 	return &row, err
 }
 
 func (r *SalesDocumentRepository) Execution(ctx context.Context, orderID uint) (*SalesOrderExecution, error) {
 	var outbounds []model.SalesOutbound
-	if err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").Where("sales_order_id = ?", orderID).Order("id desc").Find(&outbounds).Error; err != nil {
+	if err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_outbounds")).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").Where("sales_order_id = ?", orderID).Order("id desc").Find(&outbounds).Error; err != nil {
 		return nil, err
 	}
 	var payments []model.Payment
-	if err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("SalesInvoice").Where("sales_order_id = ?", orderID).Order("id desc").Find(&payments).Error; err != nil {
+	if err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "payments")).Preload("SalesOrder.Customer").Preload("SalesInvoice").Where("sales_order_id = ?", orderID).Order("id desc").Find(&payments).Error; err != nil {
 		return nil, err
 	}
 	invoices := make([]model.SalesInvoice, 0)
-	if err := invoiceDetails(r.db.WithContext(ctx)).Where("sales_order_id = ?", orderID).Order("id desc").Find(&invoices).Error; err != nil {
+	if err := invoiceDetails(r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_invoices"))).Where("sales_order_id = ?", orderID).Order("id desc").Find(&invoices).Error; err != nil {
 		return nil, err
 	}
 	for i := range invoices {
@@ -307,7 +307,7 @@ func (r *SalesDocumentRepository) Execution(ctx context.Context, orderID uint) (
 
 func (r *SalesDocumentRepository) PaymentReport(ctx context.Context) ([]SalesOrderPaymentReportRow, error) {
 	var orders []model.SalesOrder
-	if err := r.db.WithContext(ctx).Preload("Customer").Where("status = ?", "confirmed").Order("order_date desc, id desc").Find(&orders).Error; err != nil {
+	if err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_orders")).Preload("Customer").Where("status = ?", "confirmed").Order("order_date desc, id desc").Find(&orders).Error; err != nil {
 		return nil, err
 	}
 	rows := make([]SalesOrderPaymentReportRow, 0, len(orders))
@@ -357,11 +357,11 @@ func (r *SalesDocumentRepository) Dashboard(ctx context.Context) (*DashboardStat
 			balances[row.CustomerName] += row.UnpaidAmount
 		}
 	}
-	if err := r.db.WithContext(ctx).Table("sales_outbound_lines").Joins("JOIN sales_outbounds ON sales_outbounds.id = sales_outbound_lines.sales_outbound_id").Where("sales_outbounds.status = ?", "confirmed").Select("COALESCE(SUM(sales_outbound_lines.outbound_quantity), 0)").Scan(&stats.OutboundQuantity).Error; err != nil {
+	if err := r.db.WithContext(ctx).Table("sales_outbound_lines").Joins("JOIN sales_outbounds ON sales_outbounds.id = sales_outbound_lines.sales_outbound_id").Scopes(branchScope(ctx, "sales_outbounds")).Where("sales_outbounds.status = ?", "confirmed").Select("COALESCE(SUM(sales_outbound_lines.outbound_quantity), 0)").Scan(&stats.OutboundQuantity).Error; err != nil {
 		return nil, err
 	}
 	var recent []model.SalesOrder
-	if err := r.db.WithContext(ctx).Preload("Customer").Order("created_at desc").Limit(5).Find(&recent).Error; err != nil {
+	if err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_orders")).Preload("Customer").Order("created_at desc").Limit(5).Find(&recent).Error; err != nil {
 		return nil, err
 	}
 	for _, order := range recent {
@@ -388,7 +388,7 @@ func (r *SalesDocumentRepository) Dashboard(ctx context.Context) (*DashboardStat
 		Count int64
 	}
 	var dailyCounts []dailyOrderCount
-	if err := r.db.WithContext(ctx).Model(&model.SalesOrder{}).
+	if err := r.db.WithContext(ctx).Model(&model.SalesOrder{}).Scopes(branchScope(ctx, "sales_orders")).
 		Select("TO_CHAR(order_date, 'YYYY-MM-DD') AS date, COUNT(*) AS count").
 		Where("order_date BETWEEN ? AND ?", startDate.Format("2006-01-02"), today.Format("2006-01-02")).
 		Group("order_date").

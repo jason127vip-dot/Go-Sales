@@ -18,22 +18,35 @@ var ErrAlreadyInvoiced = errors.New("this sales outbound already has an invoice"
 var ErrDocumentInUse = errors.New("document has dependent records; remove or reverse them first")
 var ErrLegacyPayment = errors.New("this order has confirmed legacy payments; cancel their confirmation and assign them to invoices before confirming invoice payments")
 var ErrInvoiceRequired = errors.New("select a confirmed invoice from the same sales order")
+var ErrBranchRequired = errors.New("select a valid branch before creating a document")
 
 func lockSalesOrder(tx *gorm.DB, id uint) (*model.SalesOrder, error) {
 	var order model.SalesOrder
-	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&order, id).Error
+	err := tx.Scopes(branchScope(tx.Statement.Context, "sales_orders")).Clauses(clause.Locking{Strength: "UPDATE"}).First(&order, id).Error
 	return &order, err
 }
 
 // Transaction-scoped numbering also works after deletion and across concurrent requests.
 func nextDocumentNumber(tx *gorm.DB, table, column, prefix string) (string, error) {
+	branchID := model.BranchID(tx.Statement.Context)
+	if branchID == 0 {
+		return "", ErrBranchRequired
+	}
+	var branch model.Branch
+	if err := tx.Select("code").First(&branch, branchID).Error; err != nil {
+		return "", err
+	}
 	if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", int64(83001)).Error; err != nil {
 		return "", err
 	}
-	base := fmt.Sprintf("%s-%d-", prefix, time.Now().Year())
+	base := documentNumberBase(prefix, branch.Code, time.Now())
 	var next int64
-	err := tx.Table(table).Where(column+" LIKE ?", base+"%").Select("COALESCE(MAX(CAST(SPLIT_PART(" + column + ", '-', 3) AS BIGINT)), 0) + 1").Scan(&next).Error
+	err := tx.Table(table).Where("LEFT("+column+", ?) = ?", len(base), base).Select("COALESCE(MAX(CAST(SPLIT_PART(" + column + ", '-', 4) AS BIGINT)), 0) + 1").Scan(&next).Error
 	return fmt.Sprintf("%s%04d", base, next), err
+}
+
+func documentNumberBase(prefix, branchCode string, date time.Time) string {
+	return fmt.Sprintf("%s-%s-%d-", prefix, branchCode, date.Year())
 }
 
 func invoiceDetails(tx *gorm.DB) *gorm.DB {
@@ -51,7 +64,7 @@ func invoiceBalance(tx *gorm.DB, invoice *model.SalesInvoice) error {
 func (r *SalesDocumentRepository) FindInvoices(ctx context.Context) ([]model.SalesInvoice, error) {
 	rows := make([]model.SalesInvoice, 0)
 	tx := r.db.WithContext(ctx)
-	if err := invoiceDetails(tx).Order("id desc").Find(&rows).Error; err != nil {
+	if err := invoiceDetails(tx).Scopes(branchScope(ctx, "sales_invoices")).Order("id desc").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	for i := range rows {
@@ -65,7 +78,7 @@ func (r *SalesDocumentRepository) FindInvoices(ctx context.Context) ([]model.Sal
 func (r *SalesDocumentRepository) FindInvoice(ctx context.Context, id uint) (*model.SalesInvoice, error) {
 	var row model.SalesInvoice
 	tx := r.db.WithContext(ctx)
-	if err := invoiceDetails(tx).First(&row, id).Error; err != nil {
+	if err := invoiceDetails(tx).Scopes(branchScope(ctx, "sales_invoices")).First(&row, id).Error; err != nil {
 		return nil, err
 	}
 	return &row, invoiceBalance(tx, &row)
@@ -73,7 +86,7 @@ func (r *SalesDocumentRepository) FindInvoice(ctx context.Context, id uint) (*mo
 
 func (r *SalesDocumentRepository) InvoiceOutbounds(ctx context.Context) ([]model.SalesOutbound, error) {
 	rows := make([]model.SalesOutbound, 0)
-	err := r.db.WithContext(ctx).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").Where("status = ? AND NOT EXISTS (SELECT 1 FROM sales_invoices WHERE sales_outbound_id = sales_outbounds.id)", "confirmed").Order("id desc").Find(&rows).Error
+	err := r.db.WithContext(ctx).Scopes(branchScope(ctx, "sales_outbounds")).Preload("SalesOrder.Customer").Preload("Lines.SalesOrderLine").Where("status = ? AND NOT EXISTS (SELECT 1 FROM sales_invoices WHERE sales_outbound_id = sales_outbounds.id)", "confirmed").Order("id desc").Find(&rows).Error
 	return rows, err
 }
 

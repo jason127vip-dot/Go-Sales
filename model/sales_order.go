@@ -3,6 +3,8 @@ package model
 import "time"
 
 type SalesOrder struct {
+	BranchID             uint             `json:"branchId" gorm:"not null;default:1;index"`
+	Branch               Branch           `json:"branch" gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 	ID                   uint             `json:"id" gorm:"primaryKey;autoIncrement"`
 	OrderNo              string           `json:"orderNo" gorm:"size:50;not null;uniqueIndex"`
 	CustomerID           uint             `json:"customerId" gorm:"not null;index"`
@@ -22,6 +24,7 @@ type SalesOrder struct {
 	PaymentStatus        string           `json:"paymentStatus" gorm:"-"`
 	PaidAmount           float64          `json:"paidAmount" gorm:"-"`
 	UnpaidAmount         float64          `json:"unpaidAmount" gorm:"-"`
+	CreditWarning        string           `json:"creditWarning,omitempty" gorm:"-"`
 }
 
 type SalesOrderLine struct {
@@ -36,4 +39,5 @@ type SalesOrderLine struct {
 	UnitPrice     float64 `json:"unitPrice" gorm:"type:numeric(18,2);not null"`
 	Quantity      float64 `json:"quantity" gorm:"type:numeric(18,4);not null"`
 	Amount        float64 `json:"amount" gorm:"type:numeric(18,2);not null"`
+	PriceProvided bool    `json:"-" gorm:"-"`
 }

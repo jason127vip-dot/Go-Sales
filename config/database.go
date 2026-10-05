@@ -17,13 +17,21 @@ func InitDB(databaseURL string) (*gorm.DB, error) {
 		DSN:                  databaseURL,
 		PreferSimpleProtocol: true,
 	})
-	return gorm.Open(dialector, &gorm.Config{})
+	return gorm.Open(dialector, &gorm.Config{TranslateError: true})
 }
 
 func AutoMigrate(db *gorm.DB) error {
+	if err := db.AutoMigrate(&model.Branch{}); err != nil {
+		return err
+	}
+	if err := db.Where("id = ?", 1).FirstOrCreate(&model.Branch{Code: "MAIN", Name: "Main Branch"}).Error; err != nil {
+		return err
+	}
 	return db.AutoMigrate(
 		&model.Customer{},
 		&model.Product{},
+		&model.PriceList{},
+		&model.BranchCustomerCredit{},
 		&model.SalesOrder{},
 		&model.SalesOrderLine{},
 		&model.SalesOutbound{},
