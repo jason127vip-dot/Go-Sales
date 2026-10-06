@@ -11,6 +11,7 @@ func RegisterRoutes(r *gin.Engine, healthHandler *handler.HealthHandler, custome
 	api := r.Group("/api")
 	api.GET("/dashboard", documentHandler.Dashboard)
 	api.GET("/reports/sales-order-payments", documentHandler.PaymentReport)
+	api.GET("/reports/ar-aging", documentHandler.ARAgingReport)
 	customers := api.Group("/customers")
 	customers.GET("", customerHandler.FindAll)
 	customers.POST("", customerHandler.Create)

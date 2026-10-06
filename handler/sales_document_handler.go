@@ -201,6 +201,14 @@ func (h *SalesDocumentHandler) PaymentReport(c *gin.Context) {
 	}
 	response.Success(c, rows)
 }
+func (h *SalesDocumentHandler) ARAgingReport(c *gin.Context) {
+	rows, e := h.service.ARAgingReport(c.Request.Context())
+	if e != nil {
+		handleDocumentError(c, e)
+		return
+	}
+	response.Success(c, rows)
+}
 func (h *SalesDocumentHandler) Dashboard(c *gin.Context) {
 	row, e := h.service.Dashboard(c.Request.Context())
 	if e != nil {

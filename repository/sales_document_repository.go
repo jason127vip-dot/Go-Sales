@@ -45,6 +45,18 @@ type SalesOrderPaymentReportRow struct {
 	LastPaymentDate *string `json:"lastPaymentDate"`
 	PaymentStatus   string  `json:"paymentStatus"`
 }
+type ARAgingReportRow struct {
+	ID                uint    `json:"id"`
+	InvoiceNo         string  `json:"invoiceNo"`
+	OrderNo           string  `json:"orderNo"`
+	CustomerName      string  `json:"customerName"`
+	InvoiceDate       string  `json:"invoiceDate"`
+	InvoiceAmount     float64 `json:"invoiceAmount"`
+	PaidAmount        float64 `json:"paidAmount"`
+	OutstandingAmount float64 `json:"outstandingAmount"`
+	AgingDays         int     `json:"agingDays"`
+	AgingBucket       string  `json:"agingBucket"`
+}
 type DashboardSalesOrder struct {
 	ID           uint    `json:"id"`
 	OrderNo      string  `json:"orderNo"`
@@ -336,6 +348,54 @@ func (r *SalesDocumentRepository) PaymentReport(ctx context.Context) ([]SalesOrd
 		rows = append(rows, SalesOrderPaymentReportRow{order.ID, order.OrderNo, order.Customer.Name, order.OrderDate.Format("2006-01-02"), order.TotalAmount, paid, unpaid, last, status})
 	}
 	return rows, nil
+}
+
+func (r *SalesDocumentRepository) ARAgingReport(ctx context.Context) ([]ARAgingReportRow, error) {
+	invoices, err := r.FindInvoices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	today, err := time.Parse("2006-01-02", time.Now().Format("2006-01-02"))
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]ARAgingReportRow, 0)
+	for _, invoice := range invoices {
+		if invoice.Status != "confirmed" || invoice.UnpaidAmount <= 0 {
+			continue
+		}
+		days := invoiceAgingDays(invoice.InvoiceDate, today)
+		rows = append(rows, ARAgingReportRow{
+			ID: invoice.ID, InvoiceNo: invoice.InvoiceNo, OrderNo: invoice.SalesOrder.OrderNo,
+			CustomerName: invoice.CustomerName, InvoiceDate: invoice.InvoiceDate.Format("2006-01-02"),
+			InvoiceAmount: invoice.TotalAmount, PaidAmount: invoice.PaidAmount, OutstandingAmount: invoice.UnpaidAmount,
+			AgingDays: days, AgingBucket: agingBucket(days),
+		})
+	}
+	return rows, nil
+}
+
+func invoiceAgingDays(invoiceDate, analysisDate time.Time) int {
+	days := int(analysisDate.Sub(invoiceDate).Hours() / 24)
+	if days < 0 {
+		return 0
+	}
+	return days
+}
+
+func agingBucket(days int) string {
+	switch {
+	case days <= 30:
+		return "0-30 Days"
+	case days <= 60:
+		return "31-60 Days"
+	case days <= 90:
+		return "61-90 Days"
+	case days <= 120:
+		return "91-120 Days"
+	default:
+		return "120+ Days"
+	}
 }
 
 func (r *SalesDocumentRepository) Dashboard(ctx context.Context) (*DashboardStats, error) {

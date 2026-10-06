@@ -66,6 +66,9 @@ func (s *SalesDocumentService) Execution(c context.Context, id uint) (*repositor
 func (s *SalesDocumentService) PaymentReport(c context.Context) ([]repository.SalesOrderPaymentReportRow, error) {
 	return s.repository.PaymentReport(c)
 }
+func (s *SalesDocumentService) ARAgingReport(c context.Context) ([]repository.ARAgingReportRow, error) {
+	return s.repository.ARAgingReport(c)
+}
 func (s *SalesDocumentService) Dashboard(c context.Context) (*repository.DashboardStats, error) {
 	return s.repository.Dashboard(c)
 }
