@@ -6,7 +6,7 @@ func CORSMiddleware() gin.HandlerFunc {
 	allowedOrigins := map[string]bool{
 		"http://localhost:5173":     true,
 		"http://127.0.0.1:5173":     true,
-		"http://192.168.69.18:5173": true,
+		"http://192.168.69.55:5173": true,
 	}
 
 	return func(c *gin.Context) {

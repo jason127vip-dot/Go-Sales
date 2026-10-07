@@ -26,19 +26,7 @@ func main() {
 	r := gin.Default()
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.BranchMiddleware(db))
-	branches := handler.NewBranchHandler(service.NewBranchService(repository.NewBranchRepository(db)))
-	r.GET("/api/branches", branches.FindAll)
-	r.POST("/api/branches", branches.Save)
-	r.PUT("/api/branches/:id", branches.Save)
-	credits := handler.NewCreditHandler(service.NewCreditService(repository.NewCreditRepository(db)))
-	r.GET("/api/customer-credits", credits.Summary)
-	r.PUT("/api/customer-credits/:id", credits.SetCustomerLimit)
-	prices := handler.NewPriceListHandler(service.NewPriceListService(repository.NewPriceListRepository(db)))
-	r.GET("/api/price-lists", prices.FindAll)
-	r.POST("/api/price-lists", prices.Save)
-	r.PUT("/api/price-lists/:id", prices.Save)
-	r.DELETE("/api/price-lists/:id", prices.Delete)
-	r.GET("/api/price-lists/resolve", prices.Resolve)
+
 	customerRepository := repository.NewCustomerRepository(db)
 	customerService := service.NewCustomerService(customerRepository)
 	productRepository := repository.NewProductRepository(db)
@@ -48,7 +36,6 @@ func main() {
 	documentRepository := repository.NewSalesDocumentRepository(db)
 	documentService := service.NewSalesDocumentService(documentRepository)
 	aiReviewService := service.NewAIReviewService(repository.NewOrderReviewRepository(db), service.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel))
-
 	router.RegisterRoutes(
 		r,
 		handler.NewHealthHandler(),
@@ -57,6 +44,9 @@ func main() {
 		handler.NewSalesOrderHandler(salesOrderService),
 		handler.NewSalesDocumentHandler(documentService),
 		handler.NewAIReviewHandler(aiReviewService),
+		handler.NewBranchHandler(service.NewBranchService(repository.NewBranchRepository(db))),
+		handler.NewCreditHandler(service.NewCreditService(repository.NewCreditRepository(db))),
+		handler.NewPriceListHandler(service.NewPriceListService(repository.NewPriceListRepository(db))),
 	)
 
 	if err := r.Run(":" + cfg.ServerPort); err != nil {

@@ -5,10 +5,24 @@ import (
 	"github.com/jason127vip-dot/Go-Sales/handler"
 )
 
-func RegisterRoutes(r *gin.Engine, healthHandler *handler.HealthHandler, customerHandler *handler.CustomerHandler, productHandler *handler.ProductHandler, salesOrderHandler *handler.SalesOrderHandler, documentHandler *handler.SalesDocumentHandler, aiReviewHandler *handler.AIReviewHandler) {
+func RegisterRoutes(r *gin.Engine, healthHandler *handler.HealthHandler, customerHandler *handler.CustomerHandler, productHandler *handler.ProductHandler, salesOrderHandler *handler.SalesOrderHandler,
+	documentHandler *handler.SalesDocumentHandler, aiReviewHandler *handler.AIReviewHandler, branchHandler *handler.BranchHandler, creditHandler *handler.CreditHandler, priceListHandler *handler.PriceListHandler) {
 	r.GET("/health", healthHandler.Check)
-
 	api := r.Group("/api")
+
+	api.GET("/branches", branchHandler.FindAll)
+	api.POST("/branches", branchHandler.Save)
+	api.PUT("/branches/:id", branchHandler.Save)
+
+	api.GET("/customer-credits", creditHandler.Summary)
+	api.PUT("/customer-credits/:id", creditHandler.SetCustomerLimit)
+
+	api.GET("/price-lists", priceListHandler.FindAll)
+	api.POST("/price-lists", priceListHandler.Save)
+	api.PUT("/price-lists/:id", priceListHandler.Save)
+	api.DELETE("/price-lists/:id", priceListHandler.Delete)
+	api.GET("/price-lists/resolve", priceListHandler.Resolve)
+
 	api.GET("/dashboard", documentHandler.Dashboard)
 	api.GET("/reports/sales-order-payments", documentHandler.PaymentReport)
 	api.GET("/reports/ar-aging", documentHandler.ARAgingReport)
