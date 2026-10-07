@@ -47,6 +47,7 @@ func main() {
 	salesOrderService := service.NewSalesOrderService(salesOrderRepository)
 	documentRepository := repository.NewSalesDocumentRepository(db)
 	documentService := service.NewSalesDocumentService(documentRepository)
+	aiReviewService := service.NewAIReviewService(repository.NewOrderReviewRepository(db), service.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel))
 
 	router.RegisterRoutes(
 		r,
@@ -55,6 +56,7 @@ func main() {
 		handler.NewProductHandler(productService),
 		handler.NewSalesOrderHandler(salesOrderService),
 		handler.NewSalesDocumentHandler(documentService),
+		handler.NewAIReviewHandler(aiReviewService),
 	)
 
 	if err := r.Run(":" + cfg.ServerPort); err != nil {

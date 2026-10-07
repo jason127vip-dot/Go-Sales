@@ -5,7 +5,7 @@ import (
 	"github.com/jason127vip-dot/Go-Sales/handler"
 )
 
-func RegisterRoutes(r *gin.Engine, healthHandler *handler.HealthHandler, customerHandler *handler.CustomerHandler, productHandler *handler.ProductHandler, salesOrderHandler *handler.SalesOrderHandler, documentHandler *handler.SalesDocumentHandler) {
+func RegisterRoutes(r *gin.Engine, healthHandler *handler.HealthHandler, customerHandler *handler.CustomerHandler, productHandler *handler.ProductHandler, salesOrderHandler *handler.SalesOrderHandler, documentHandler *handler.SalesDocumentHandler, aiReviewHandler *handler.AIReviewHandler) {
 	r.GET("/health", healthHandler.Check)
 
 	api := r.Group("/api")
@@ -30,6 +30,7 @@ func RegisterRoutes(r *gin.Engine, healthHandler *handler.HealthHandler, custome
 	orders.PUT("/:id", salesOrderHandler.Update)
 	orders.POST("/:id/confirm", salesOrderHandler.Confirm)
 	orders.POST("/:id/cancel-confirmation", salesOrderHandler.CancelConfirmation)
+	orders.POST("/:id/ai-review", aiReviewHandler.Review)
 	orders.DELETE("/:id", salesOrderHandler.Delete)
 	orders.GET("/:id/execution", documentHandler.Execution)
 
